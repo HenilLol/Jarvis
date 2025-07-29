@@ -1,0 +1,31 @@
+from gtts import gTTS
+import pygame
+import io
+
+def speak(text):
+    try:
+        # Convert the text to speech using gTTS and store in memory
+        tts = gTTS(text=text, lang='en')
+        audio_fp = io.BytesIO()  # Create a file-like object in memory
+        tts.write_to_fp(audio_fp)  # Write the speech data to this memory buffer
+        audio_fp.seek(0)  # Reset file pointer to the beginning
+
+        # Initialize pygame mixer to play sound
+        pygame.mixer.init()
+
+        # Load the sound from the memory buffer
+        pygame.mixer.music.load(audio_fp, 'mp3')
+        
+        # Play the sound
+        pygame.mixer.music.play()
+
+        # Keep the program running until the speech finishes playing
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
+
+# Example usage
+if __name__ == "__main__":
+    speak("Hello Master. How can I assist you today?")
