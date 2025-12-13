@@ -6,7 +6,7 @@ def speak(text):
     try:
         # Convert the text to speech using gTTS and store in memory
         tts = gTTS(text=text, lang='en')
-        audio_fp = io.BytesIO()  # Create a file-like object in memory
+        audio_fp = io.BytesIO()  
         tts.write_to_fp(audio_fp)  # Write the speech data to this memory buffer
         audio_fp.seek(0)  # Reset file pointer to the beginning
 
