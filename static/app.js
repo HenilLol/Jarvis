@@ -133,6 +133,18 @@ $("#app-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); $("#app-launch").click(); }
 });
 
+/* ---------- always-on offline ears (server vosk) ---------- */
+$("#ears-btn").addEventListener("click", async () => {
+  const on = !$("#ears-chip").textContent.includes("OPEN");
+  const r = await fetch("/api/ears", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: on }) });
+  const d = await r.json();
+  toast(d.reply);
+  speak(d.reply);
+  refreshState();
+});
+
 /* ---------- voice recognition (browser) ---------- */
 function setupRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -216,6 +228,15 @@ function connectWS() {
       addHistory(msg.text, msg.reply || "");
       if (msg.reply) speak(msg.reply);
     }
+    else if (msg.type === "proactive") {
+      addHistory("(" + (msg.kind || "proactive") + ")", msg.text);
+      const t = $("#toast");
+      t.textContent = msg.text;
+      t.className = "show " + (msg.kind === "reminder" ? "reminder" : "proactive");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => (t.className = ""), 5000);
+      speak(msg.text);
+    }
   };
   ws.onclose = () => setTimeout(connectWS, 2000);
   ws.onopen = () => refreshState();
@@ -274,6 +295,16 @@ async function refreshState() {
     const s = await r.json();
     applyPowerState(s.online);
     $("#cmd-count").textContent = s.commands_handled;
+    if (s.ears !== undefined) {
+      $("#ears-chip").textContent = s.ears ? "👂 EARS OPEN" : "🔇 EARS CLOSED";
+      $("#ears-btn").style.borderColor = s.ears ? "var(--gold)" : "rgba(255,179,71,.4)";
+      $("#ears-btn").style.boxShadow = s.ears ? "0 0 14px rgba(255,179,71,.35)" : "none";
+    }
+    if (s.mode) $("#mode-chip").textContent = "MODE: " + s.mode.toUpperCase();
+    if (s.ambience !== undefined) $("#amb-chip").textContent = "♩ " + s.ambience.toUpperCase();
+    const rc = $("#rem-chip");
+    if (s.reminders) { rc.style.display = "inline"; rc.textContent = "⏰ " + s.reminders; }
+    else rc.style.display = "none";
     if (s.history && s.history.length && !state.historyHydrated) {
       s.history.slice(-15).forEach((h) => addHistory(h.text, h.reply));
       state.historyHydrated = true;

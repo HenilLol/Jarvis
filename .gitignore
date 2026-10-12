@@ -1,4 +1,6 @@
 .venv/
 screenshots/
 __pycache__/
+models/
 *.log
+reminders.json

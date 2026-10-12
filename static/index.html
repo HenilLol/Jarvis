@@ -237,6 +237,9 @@ body {
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
 #toast.warn { border-color: var(--gold); color: var(--gold); }
+#toast.proactive { border-color: rgba(255,179,71,.7); color: #ffd9a0; font-style: italic; }
+#toast.reminder { border-color: var(--gold); color: var(--gold); animation: remindPulse 1s ease-in-out 3; }
+@keyframes remindPulse { 50% { box-shadow: 0 0 30px rgba(255,179,71,.5); } }
 
 /* wake word hint */
 #wake-hint {
@@ -256,6 +259,12 @@ body {
     <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
     <div class="title">J.A.R.V.I.S.<small>HOME INTERFACE // MK VI</small></div>
     <div class="status-line"><span class="dot on" id="status-dot"></span><span id="status-text">SYSTEM ONLINE</span></div>
+    <div class="status-line" style="gap:14px;display:flex">
+      <span id="mode-chip" title="Active mode" style="color:var(--gold)">MODE: NORMAL</span>
+      <span id="ears-chip" title="Always-on offline voice">🔇 EARS CLOSED</span>
+      <span id="amb-chip" title="Ambience">♩ SILENCE</span>
+      <span id="rem-chip" title="Pending reminders" style="display:none;color:var(--gold)">⏰ 0</span>
+    </div>
     <div class="clock" id="clock">--:--:--</div>
   </div>
 
@@ -320,6 +329,17 @@ body {
       <button class="chip" data-cmd="tell me a joke">JOKE</button>
       <button class="chip" data-cmd="diagnostic report">DIAGNOSTIC</button>
       <button class="chip danger" data-cmd="lock my pc">LOCK PC</button>
+      <button class="chip" data-cmd="weather outside">WEATHER</button>
+      <button class="chip" data-cmd="remind me to stretch in 30 minutes">REMIND 30M</button>
+      <button class="chip" data-cmd="list my reminders">REMINDERS</button>
+      <button class="chip" data-cmd="read my screen">READ SCREEN</button>
+      <button class="chip" data-cmd="focus mode">FOCUS MODE</button>
+      <button class="chip" data-cmd="game mode">GAME MODE</button>
+      <button class="chip" data-cmd="normal mode">NORMAL MODE</button>
+      <button class="chip" data-cmd="start rain">🌧 RAIN</button>
+      <button class="chip" data-cmd="start storm">⛈ STORM</button>
+      <button class="chip" data-cmd="start deep">🌌 DEEP SPACE</button>
+      <button class="chip" data-cmd="stop ambience">STOP AMBIENCE</button>
       <button class="chip danger" data-cmd="shutdown my computer">SHUTDOWN ⚠</button>
     </div>
     <h3 style="margin-top:14px">// APP LAUNCH</h3>
@@ -334,6 +354,7 @@ body {
     <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
     <form id="cmd-form" autocomplete="off">
       <button type="button" class="btn mic" id="mic-btn" title="Voice command (uses browser speech recognition)">🎙</button>
+      <button type="button" class="btn mic" id="ears-btn" title="Always-on offline listening: say 'JARVIS <command>' anywhere (no browser needed)" style="border-color:rgba(255,179,71,.4);color:var(--gold)">👂</button>
       <input id="cmd-input" placeholder="Type a command… e.g. 'volume up', 'open chrome', 'system status'" autocomplete="off" autofocus>
       <button type="submit" class="btn">EXECUTE</button>
     </form>
@@ -347,7 +368,7 @@ body {
 </div>
 
 <div id="toast"></div>
-<div id="wake-hint">TIP: MIC BUTTON USES BROWSER SPEECH RECOGNITION · CHROME/EDGE RECOMMENDED</div>
+<div id="wake-hint">👂 ALWAYS-ON EARS: SAY "JARVIS &lt;COMMAND&gt;" ANYWHERE · FULLY OFFLINE (VOSK)</div>
 
 <div id="boot-overlay">
   <div class="big">J.A.R.V.I.S.</div>

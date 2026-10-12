@@ -14,6 +14,7 @@ import json
 import os
 import pythoncom  # COM init for Windows audio/device APIs
 import random
+import re
 import subprocess
 import sys
 import threading
@@ -28,6 +29,9 @@ from fastapi.staticfiles import StaticFiles
 from pyautogui import press as send_key, hotkey, screenshot as take_screenshot
 import pyperclip
 
+from jarvis_brain import (ReminderStore, get_weather, fuzzy_match,
+                           AmbientEngine, VoskListener, ProactiveAgent)
+
 # ---------------------------------------------------------------------------
 # Config
 HOST = "127.0.0.1"
@@ -35,6 +39,10 @@ PORT = 8420
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="JARVIS Local Control", docs_url=None, redoc_url=None)
+
+reminders = ReminderStore(BASE_DIR / "reminders.json")
+ambient = AmbientEngine()
+
 
 # ---------------------------------------------------------------------------
 # State machine: ON / OFF  (the master switch)
@@ -414,6 +422,90 @@ def route_command(raw: str) -> dict:
         return {"ok": True, "reply": (f"Brightness is at {cur} percent." if cur >= 0
                                       else "Brightness control is not available on this display."), "data": {"brightness": cur}}
 
+    # --- MK VII: weather ----------------------------------------------------
+    if "weather" in text or "temperature outside" in text or "how hot" in text or "raining" in text:
+        w = get_weather()
+        if w:
+            return {"ok": True, "reply": f"In {w['location']}: {w['desc']}, {w['temp_c']} degrees."
+                    f" Feels like {w['feels_like']}. Humidity {w['humidity']} percent,"
+                    f" wind {w['wind_kmph']} kilometers per hour.", "data": w}
+        return {"ok": False, "reply": "Weather service unreachable, sir. Check the network."}
+
+    # --- MK VII: reminders ---------------------------------------------------
+    if text.startswith("remind me to") or text.startswith("set a reminder to") or text.startswith("set reminder"):
+        body = text
+        for pre in ("set a reminder to", "remind me to", "set reminder to", "set a reminder", "set reminder"):
+            if body.startswith(pre):
+                body = body[len(pre):].strip()
+                break
+        if not body:
+            return {"ok": False, "reply": "What shall I remind you about, sir?"}
+        when = dt.datetime.now()
+        m = re.search(r"in (\d+) (second|minute|hour|day)s?", text)
+        if m:
+            n, unit = int(m.group(1)), m.group(2)
+            when += dt.timedelta(**{unit + "s": n})
+            body = re.sub(r"in \d+ (second|minute|hour|day)s?", "", body).strip()
+        m = re.search(r"at (\d{1,2}):(\d{2})", text)
+        if m:
+            when = when.replace(hour=min(23, int(m.group(1))), minute=int(m.group(2)), second=0)
+            if when < dt.datetime.now():
+                when += dt.timedelta(days=1)
+            body = re.sub(r"at \d{1,2}:\d{2}", "", body).strip()
+        item = reminders.add(body, when)
+        return {"ok": True, "reply": f"Reminder set for {when.strftime('%I:%M %p')}: {body}."}
+    if "list reminder" in text or "my reminders" in text or "show reminder" in text:
+        pend = reminders.pending()
+        if not pend:
+            return {"ok": True, "reply": "No pending reminders, sir."}
+        lines = [f"{dt.datetime.fromisoformat(i['when']).strftime('%I:%M %p')}: {i['text']}" for i in pend[:5]]
+        return {"ok": True, "reply": "You have " + str(len(pend)) + " pending: " + "; ".join(lines) + "."}
+
+    # --- MK VII: ambient soundscapes ------------------------------------------
+    if "ambience" in text or "ambient" in text or "soundscape" in text or re.search(r"\b(start|play|stop|kill) (the )?(rain|storm|brown|cafe|café|deep)\b", text):
+        if re.search(r"\b(stop|kill|silence)\b", text):
+            ambient.stop()
+            return {"ok": True, "reply": "Ambience stopped."}
+        for kind in ambient.KINDS:
+            if kind in text or (kind == "cafe" and "café" in text):
+                ok, reply = ambient.start(kind)
+                return {"ok": ok, "reply": reply}
+        return {"ok": False, "reply": "Available ambience: " + ", ".join(ambient.KINDS) + "."}
+
+    # --- MK VII: modes ----------------------------------------------------------
+    if "focus mode" in text:
+        set_volume(22); set_brightness(70)
+        agent.mode = "focus"
+        return {"ok": True, "reply": "Focus mode engaged. Volume lowered, distractions minimised. I'll keep interruptions to a minimum, sir."}
+    if "game mode" in text:
+        set_volume(75); set_brightness(90)
+        agent.mode = "game"
+        return {"ok": True, "reply": "Game mode engaged. Volume boosted, brightness raised. Good hunting, sir."}
+    if "normal mode" in text or "default mode" in text:
+        set_volume(45); set_brightness(60)
+        agent.mode = "normal"
+        return {"ok": True, "reply": "Back to standard configuration, sir."}
+
+    # --- MK VII: read screen (OCR) ---------------------------------------------
+    if "read my screen" in text or "what's on my screen" in text or "read the screen" in text:
+        try:
+            import pytesseract
+            from PIL import Image
+            pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+            shot = screenshot_to_file()
+            txt = pytesseract.image_to_string(Image.open(str(shot))).strip()
+            words = txt.split()
+            if not words:
+                return {"ok": False, "reply": "The screen appears to have no readable text, sir."}
+            preview = " ".join(words[:60])
+            return {"ok": True, "reply": f"Screen contents: {preview}", "data": {"screenshot": str(shot), "text": txt[:2000]}}
+        except Exception as e:
+            return {"ok": False, "reply": f"Screen reading failed: {e}"}
+
+    # --- MK VII: fuzzy fallback ---------------------------------------------------
+    # (only when nothing matched exactly — try to rescue typos & paraphrases)
+    # NOTE: handled at the bottom fallback instead, to keep priority order.
+
     # --- media -------------------------------------------------------------
     if any(k in text for k in ("play", "pause", "next track", "next song", "previous track", "previous song", "skip")):
         if "next" in text or "skip" in text:
@@ -596,9 +688,15 @@ def route_command(raw: str) -> dict:
     if "roll a dice" in text or "roll dice" in text or text == "roll a die":
         return {"ok": True, "reply": f"You rolled a {random.randint(1, 6)}."}
 
-    # --- fallback ------------------------------------------------------------------------
+    # --- fallback: fuzzy rescue, then give up politely -------------------------------------
+    m = fuzzy_match(raw)
+    if m and m != text:
+        result = route_command(m)
+        result = dict(result)
+        result["via_fuzzy"] = m
+        return result
     return {"ok": False,
-            "reply": "I'm afraid that command isn't in my repertoire, sir. Try: volume, brightness, open, close, screenshot, status, or 'help'."}
+            "reply": "I'm afraid that command isn't in my repertoire, sir. Try: volume, brightness, open, close, screenshot, status, weather, reminders, modes — or 'help'."}
 
 
 # ---------------------------------------------------------------------------
@@ -612,6 +710,10 @@ def api_state():
             "commands_handled": state["commands_handled"],
             "pending_confirm": bool(state["pending_confirm"]),
             "history": state["history"][-40:],
+            "ears": listener.enabled,
+            "mode": agent.mode,
+            "ambience": ambient.status(),
+            "reminders": len(reminders.pending()),
         }
 
 
@@ -664,16 +766,16 @@ async def api_confirm(body: dict):
     return {"ok": True, "reply": "Standing down."}
 
 
-# Backend TTS (fallback when browser voices unavailable)
+# Backend TTS (fallback when browser voices unavailable, and the voice of
+# the proactive agent / voice-command replies)
 _tts_lock = threading.Lock()
 
-@app.post("/api/tts")
-async def api_tts(body: dict):
-    text = (body or {}).get("text", "").strip()
+def tts_speak(text: str):
+    """Offline Windows TTS with JARVIS timbre. Fire-and-forget."""
     if not text:
-        return JSONResponse({"ok": False}, status_code=400)
+        return
 
-    def speak():
+    def _speak():
         try:
             import pyttsx3
             with _tts_lock:
@@ -685,7 +787,15 @@ async def api_tts(body: dict):
                 engine.stop()
         except Exception:
             pass
-    threading.Thread(target=speak, daemon=True).start()
+    threading.Thread(target=_speak, daemon=True).start()
+
+
+@app.post("/api/tts")
+async def api_tts(body: dict):
+    text = (body or {}).get("text", "").strip()
+    if not text:
+        return JSONResponse({"ok": False}, status_code=400)
+    tts_speak(text)
     return {"ok": True}
 
 
@@ -722,11 +832,69 @@ async def ws_endpoint(ws: WebSocket):
         clients.discard(ws)
 
 
+# ---------------------------------------------------------------------------
+# MK VII: proactive agent + voice pipeline
+agent = ProactiveAgent(broadcast, tts_speak, reminders)
+
+
+def handle_voice_command(cmd: str):
+    """Called by the vosk listener thread when a wake-word command lands."""
+    print(f"[voice] {cmd!r}")
+    try:
+        result = route_command(cmd)
+        log_history("(voice) " + cmd, result.get("reply", ""))
+        broadcast({"type": "command", "text": "(voice) " + cmd, **result})
+        tts_speak(result.get("reply", ""))
+    except Exception as e:
+        print(f"[voice] error: {e}")
+
+
+def handle_wake_attention():
+    """Bare 'jarvis' with no command — acknowledge."""
+    tts_speak("Sir?")
+    broadcast({"type": "proactive", "text": "Sir?", "kind": "attention"})
+
+
+listener = VoskListener(on_command=handle_voice_command,
+                        on_power=handle_wake_attention)
+
+
+@app.post("/api/ears")
+async def api_ears(body: dict):
+    """Toggle the always-on offline listener."""
+    on = bool((body or {}).get("enabled"))
+    if on:
+        ok, reply = listener.start()
+    else:
+        listener.stop()
+        ok, reply = True, "Ears closed."
+    return {"ok": ok, "reply": reply, "enabled": listener.enabled}
+
+
+@app.get("/api/reminders")
+async def api_reminders():
+    return {"pending": reminders.pending()}
+
+
+@app.on_event("startup")
+async def startup():
+    # proactive loop: reminders + vitals check + ambient chatter
+    async def proactive_loop():
+        while True:
+            try:
+                await asyncio.to_thread(agent.check_cycle)
+            except Exception:
+                pass
+            await asyncio.sleep(20)
+
+    asyncio.create_task(proactive_loop())
+
+
 # Serve the HUD
 app.mount("/", StaticFiles(directory=str(BASE_DIR / "static"), html=True), name="hud")
 
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"\n  J.A.R.V.I.S. local server → http://{HOST}:{PORT}\n")
+    print(f"\n  J.A.R.V.I.S. MK VII → http://{HOST}:{PORT}\n")
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
