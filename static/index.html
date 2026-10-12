@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J.A.R.V.I.S. — Home Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cyan: #00d9ff;
+  --cyan-dim: rgba(0, 217, 255, 0.35);
+  --cyan-glow: rgba(0, 217, 255, 0.15);
+  --bg: #020508;
+  --panel: rgba(4, 14, 22, 0.82);
+  --text: #bfeaff;
+  --gold: #ffb347;
+  --red: #ff4d5e;
+  --green: #39ff8e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  overflow: hidden;
+}
+
+/* ============ ambient background ============ */
+#bg-canvas { position: fixed; inset: 0; z-index: 0; }
+.scanline-overlay {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,217,255,0.02) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+.vignette {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.75) 100%);
+}
+
+/* ============ layout ============ */
+#app {
+  position: relative; z-index: 2;
+  display: grid; height: 100vh;
+  grid-template-columns: 320px 1fr 340px;
+  grid-template-rows: 64px 1fr 220px;
+  gap: 14px; padding: 14px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--cyan-dim);
+  border-radius: 10px;
+  position: relative;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 24px rgba(0,217,255,0.05), inset 0 0 24px rgba(0,217,255,0.03);
+  overflow: hidden;
+}
+.panel::before {
+  content: ''; position: absolute; top: 0; left: -60%; width: 45%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(0,217,255,0.06), transparent);
+  animation: panelSheen 7s ease-in-out infinite;
+}
+@keyframes panelSheen { 0%, 60% { left: -60%; } 100% { left: 130%; } }
+
+.corner { position: absolute; width: 10px; height: 10px; border: 1.5px solid var(--cyan); opacity: .7; }
+.corner.tl { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.corner.tr { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+.corner.bl { bottom: -1px; left: -1px; border-right: 0; border-top: 0; }
+.corner.br { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+/* ============ header ============ */
+#header {
+  grid-column: 1 / 4;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 22px;
+  font-family: 'Share Tech Mono', monospace;
+}
+#header .title { font-size: 22px; letter-spacing: 6px; color: var(--cyan); text-shadow: 0 0 12px var(--cyan-dim); }
+#header .title small { display: block; font-size: 10px; letter-spacing: 3px; color: rgba(191,234,255,.5); text-align: center; }
+#header .clock { font-size: 26px; color: var(--cyan); text-shadow: 0 0 10px var(--cyan-dim); }
+#header .status-line { font-size: 11px; letter-spacing: 2px; color: rgba(191,234,255,.55); }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.dot.off { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+/* ============ core (center) ============ */
+#core-panel {
+  grid-column: 2; grid-row: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px;
+}
+#core {
+  width: 240px; height: 240px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform .2s ease, filter .3s;
+  user-select: none;
+}
+#core:hover { transform: scale(1.04); }
+#core:active { transform: scale(.97); }
+#core .rings, #core .rings2, #core .rings3 { position: absolute; border-radius: 50%; }
+
+/* arc reactor */
+.core-ring {
+  position: absolute; border-radius: 50%; border: 2px solid var(--cyan-dim);
+}
+.core-ring.r1 { width: 240px; height: 240px; border-width: 2px; animation: spin 14s linear infinite; border-style: dashed; }
+.core-ring.r2 { width: 200px; height: 200px; border-color: rgba(0,217,255,.5); animation: spinRev 9s linear infinite; border-style: dashed; }
+.core-ring.r3 { width: 168px; height: 168px; border-color: rgba(0,217,255,.7); animation: spin 5s linear infinite; }
+.core-ring.r4 { width: 130px; height: 130px; border-color: var(--cyan); box-shadow: 0 0 30px var(--cyan-dim), inset 0 0 30px var(--cyan-glow); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spinRev { to { transform: rotate(-360deg); } }
+
+#core .center {
+  width: 96px; height: 96px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #eaffff 0%, var(--cyan) 34%, #0284a8 68%, #021c26 100%);
+  box-shadow: 0 0 60px var(--cyan), 0 0 120px rgba(0,217,255,.4);
+  animation: corePulse 2.6s ease-in-out infinite;
+  display: grid; place-items: center;
+  font-family: 'Share Tech Mono', monospace;
+  color: #02141c; font-weight: 700; font-size: 13px; letter-spacing: 1px;
+}
+@keyframes corePulse {
+  0%, 100% { box-shadow: 0 0 50px var(--cyan), 0 0 110px rgba(0,217,255,.35); }
+  50% { box-shadow: 0 0 80px var(--cyan), 0 0 160px rgba(0,217,255,.5); }
+}
+#core.off .center {
+  background: radial-gradient(circle at 35% 35%, #2a3540 0%, #10161c 60%, #02060a 100%);
+  box-shadow: none; animation: none; color: #3d5261;
+}
+#core.off .core-ring { border-color: rgba(90,110,125,.25); animation-play-state: paused; }
+
+#core-caption { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 3px; color: rgba(191,234,255,.65); }
+#core-state { font-size: 15px; letter-spacing: 5px; color: var(--cyan); font-family: 'Share Tech Mono', monospace; text-shadow: 0 0 10px var(--cyan-dim); }
+#core-state.off { color: #5a6e7a; text-shadow: none; }
+
+/* ============ left column: telemetry ============ */
+#telemetry {
+  grid-column: 1; grid-row: 2;
+  display: flex; flex-direction: column; padding: 16px; gap: 14px;
+  font-family: 'Share Tech Mono', monospace;
+  overflow: hidden;
+}
+.sec-label { font-size: 10px; letter-spacing: 3px; color: rgba(191,234,255,.5); margin-bottom: 6px; }
+.gauge { display: flex; flex-direction: column; gap: 4px; }
+.gauge .label { display: flex; justify-content: space-between; font-size: 12px; }
+.gauge .label span:last-child { color: var(--cyan); }
+.bar { height: 8px; border: 1px solid var(--cyan-dim); border-radius: 4px; overflow: hidden; background: rgba(0,20,30,.6); }
+.bar > div { height: 100%; width: 0%; background: linear-gradient(90deg, #0284a8, var(--cyan)); box-shadow: 0 0 12px var(--cyan-dim); transition: width .8s ease; }
+.bar.warn > div { background: linear-gradient(90deg, #a86a02, var(--gold)); box-shadow: 0 0 12px rgba(255,179,71,.4); }
+.bar.crit > div { background: linear-gradient(90deg, #8a0022, var(--red)); box-shadow: 0 0 12px rgba(255,77,94,.4); }
+#battery-box { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+#battery-box .pct { color: var(--cyan); font-size: 20px; }
+#battery-box .plug { font-size: 10px; color: var(--green); letter-spacing: 1px; }
+#disks { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+#disks .d { display: flex; justify-content: space-between; color: rgba(191,234,255,.75); }
+#disks .d b { color: var(--cyan); font-weight: normal; }
+
+/* ============ right column: command deck ============ */
+#cmd-panel {
+  grid-column: 3; grid-row: 2;
+  display: flex; flex-direction: column; padding: 16px;
+  font-family: 'Share Tech Mono', monospace;
+}
+#cmd-panel h3 { font-size: 11px; letter-spacing: 3px; color: rgba(191,234,255,.5); margin-bottom: 10px; }
+#cmd-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+.chip {
+  border: 1px solid var(--cyan-dim); color: var(--text);
+  background: rgba(0, 30, 45, .4);
+  padding: 6px 10px; border-radius: 4px; cursor: pointer;
+  font-size: 11px; letter-spacing: 1px; transition: all .15s;
+  font-family: inherit;
+}
+.chip:hover { border-color: var(--cyan); background: rgba(0, 217, 255, 0.12); box-shadow: 0 0 10px var(--cyan-glow); transform: translateY(-1px); }
+.chip:active { transform: translateY(0); }
+.chip.danger { border-color: rgba(255,77,94,.4); color: #ffb9c0; }
+.chip.danger:hover { border-color: var(--red); background: rgba(255,77,94,.1); box-shadow: 0 0 10px rgba(255,77,94,.2); }
+
+#history-panel { grid-row: 3; grid-column: 1 / 4; display: flex; flex-direction: column; padding: 12px 16px; }
+#history-panel h3 { font-size: 10px; letter-spacing: 3px; color: rgba(191,234,255,.5); margin-bottom: 8px; font-family: 'Share Tech Mono', monospace; }
+#history { display: flex; flex-direction: column-reverse; gap: 3px; overflow: hidden; font-family: 'Share Tech Mono', monospace; }
+#history .line { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#history .line .u { color: var(--gold); }
+#history .line .j { color: var(--text); }
+#history .line .j::before { content: '» '; color: var(--cyan); }
+
+/* ============ bottom console (center) ============ */
+#console-panel {
+  grid-row: 3; grid-column: 2;
+  display: flex; align-items: center; gap: 12px; padding: 0 16px;
+}
+#console-panel form { flex: 1; display: flex; gap: 10px; }
+#cmd-input {
+  flex: 1; height: 42px; background: rgba(0, 25, 38, .55);
+  border: 1px solid var(--cyan-dim); border-radius: 8px;
+  color: var(--cyan); font-family: 'Share Tech Mono', monospace;
+  font-size: 15px; padding: 0 14px; letter-spacing: 1px; outline: none;
+  box-shadow: inset 0 0 14px rgba(0,217,255,.06);
+}
+#cmd-input:focus { border-color: var(--cyan); box-shadow: inset 0 0 14px rgba(0,217,255,.12), 0 0 16px var(--cyan-glow); }
+#cmd-input::placeholder { color: rgba(191,234,255,.28); }
+.btn {
+  height: 42px; padding: 0 20px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--cyan); background: rgba(0,217,255,.1); color: var(--cyan);
+  font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 2px;
+  transition: all .15s;
+}
+.btn:hover { background: rgba(0,217,255,.22); box-shadow: 0 0 14px var(--cyan-glow); }
+.btn.mic { width: 52px; padding: 0; font-size: 18px; border-color: var(--cyan-dim); }
+.btn.mic.listening { border-color: var(--red); color: var(--red); animation: micPulse 1.2s ease-in-out infinite; background: rgba(255,77,94,.08); }
+@keyframes micPulse { 50% { box-shadow: 0 0 18px rgba(255,77,94,.35); } }
+
+/* ============ overlays ============ */
+#boot-overlay {
+  position: fixed; inset: 0; z-index: 50; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  transition: opacity .6s; font-family: 'Share Tech Mono', monospace;
+}
+#boot-overlay.done { opacity: 0; pointer-events: none; }
+#boot-overlay .big { font-size: 30px; letter-spacing: 14px; color: var(--cyan); text-shadow: 0 0 20px var(--cyan-dim); }
+#boot-log { font-size: 12px; color: rgba(191,234,255,.7); height: 130px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#boot-log div { opacity: 0; animation: bootLine .35s forwards; }
+@keyframes bootLine { to { opacity: 1; } }
+#boot-bar { width: 320px; height: 3px; background: rgba(0,217,255,.15); border-radius: 2px; overflow: hidden; }
+#boot-bar > div { height: 100%; width: 0%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); animation: bootFill 2.8s ease forwards; }
+@keyframes bootFill { to { width: 100%; } }
+
+#toast {
+  position: fixed; top: 84px; left: 50%; transform: translateX(-50%) translateY(-140%);
+  z-index: 60; padding: 10px 26px; border-radius: 8px;
+  border: 1px solid var(--cyan-dim); background: rgba(3, 18, 28, .92);
+  color: var(--cyan); font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 1px;
+  box-shadow: 0 0 24px rgba(0,217,255,.15);
+  transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
+  max-width: 80vw; text-align: center;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.warn { border-color: var(--gold); color: var(--gold); }
+
+/* wake word hint */
+#wake-hint {
+  position: fixed; bottom: 12px; right: 16px; z-index: 5;
+  font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px;
+  color: rgba(191,234,255,.35); pointer-events: none;
+}
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="scanline-overlay"></div>
+<div class="vignette"></div>
+
+<div id="app">
+  <div id="header" class="panel">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <div class="title">J.A.R.V.I.S.<small>HOME INTERFACE // MK VI</small></div>
+    <div class="status-line"><span class="dot on" id="status-dot"></span><span id="status-text">SYSTEM ONLINE</span></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+
+  <div id="telemetry" class="panel">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <div class="sec-label">// SYSTEM VITALS</div>
+    <div class="gauge"><div class="label"><span>CPU LOAD</span><span id="cpu-val">0%</span></div><div class="bar" id="cpu-bar"><div></div></div></div>
+    <div class="gauge"><div class="label"><span>MEMORY</span><span id="ram-val">0%</span></div><div class="bar" id="ram-bar"><div></div></div></div>
+    <div class="gauge"><div class="label"><span>VOLUME</span><span id="vol-val">0%</span></div><div class="bar" id="vol-bar"><div></div></div></div>
+    <div class="gauge"><div class="label"><span>BRIGHTNESS</span><span id="bri-val">0%</span></div><div class="bar" id="bri-bar"><div></div></div></div>
+    <div class="sec-label" style="margin-top:8px">// POWER</div>
+    <div id="battery-box">
+      <div class="pct" id="bat-pct">--%</div>
+      <div>
+        <div class="plug" id="bat-plug">AC POWER</div>
+        <div style="font-size:10px;color:rgba(191,234,255,.45)" id="bat-note">est. --h --m</div>
+      </div>
+    </div>
+    <div class="sec-label" style="margin-top:8px">// STORAGE</div>
+    <div id="disks"></div>
+    <div class="sec-label" style="margin-top:auto">// NETWORK SESSION</div>
+    <div id="disks" style="font-size:11px;color:rgba(191,234,255,.7)">
+      <div class="d"><span>SENT</span><b id="net-up">0 MB</b></div>
+      <div class="d"><span>RECEIVED</span><b id="net-down">0 MB</b></div>
+    </div>
+  </div>
+
+  <div id="core-panel" class="panel">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <div id="core" title="Click: power on / off">
+      <div class="core-ring r1"></div>
+      <div class="core-ring r2"></div>
+      <div class="core-ring r3"></div>
+      <div class="core-ring r4"></div>
+      <div class="center" id="core-center">ON</div>
+    </div>
+    <div id="core-state">SYSTEM ONLINE</div>
+    <div id="core-caption">CLICK CORE TO POWER DOWN · VOICE: "GO TO SLEEP" / "WAKE UP"</div>
+    <div id="core-caption" style="color:rgba(255,179,71,.6)">COMMANDS SERVED: <span id="cmd-count" style="color:var(--gold)">0</span></div>
+  </div>
+
+  <div id="cmd-panel" class="panel">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <h3>// QUICK COMMANDS</h3>
+    <div id="cmd-grid">
+      <button class="chip" data-cmd="status">SYSTEM STATUS</button>
+      <button class="chip" data-cmd="what's the time">TIME</button>
+      <button class="chip" data-cmd="volume up">VOL +</button>
+      <button class="chip" data-cmd="volume down">VOL −</button>
+      <button class="chip" data-cmd="brightness up">BRIGHT +</button>
+      <button class="chip" data-cmd="brightness down">BRIGHT −</button>
+      <button class="chip" data-cmd="take a screenshot">SCREENSHOT</button>
+      <button class="chip" data-cmd="open notepad">NOTEPAD</button>
+      <button class="chip" data-cmd="open calculator">CALCULATOR</button>
+      <button class="chip" data-cmd="open file explorer">EXPLORER</button>
+      <button class="chip" data-cmd="open chrome">CHROME</button>
+      <button class="chip" data-cmd="open vscode">VSCODE</button>
+      <button class="chip" data-cmd="play pause">PLAY / PAUSE</button>
+      <button class="chip" data-cmd="next track">NEXT TRACK</button>
+      <button class="chip" data-cmd="read my clipboard">CLIPBOARD</button>
+      <button class="chip" data-cmd="minimize everything">SHOW DESKTOP</button>
+      <button class="chip" data-cmd="tell me a joke">JOKE</button>
+      <button class="chip" data-cmd="diagnostic report">DIAGNOSTIC</button>
+      <button class="chip danger" data-cmd="lock my pc">LOCK PC</button>
+      <button class="chip danger" data-cmd="shutdown my computer">SHUTDOWN ⚠</button>
+    </div>
+    <h3 style="margin-top:14px">// APP LAUNCH</h3>
+    <input id="app-input" placeholder="app name…" style="
+      width: calc(100% - 64px); height: 34px; background: rgba(0,25,38,.5);
+      border: 1px solid var(--cyan-dim); border-radius: 6px; color: var(--cyan);
+      font-family: 'Share Tech Mono', monospace; padding: 0 10px; outline: none; font-size: 12px;">
+    <button class="btn" id="app-launch" style="height:34px;padding:0 14px;font-size:11px">OPEN</button>
+  </div>
+
+  <div id="console-panel" class="panel">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <form id="cmd-form" autocomplete="off">
+      <button type="button" class="btn mic" id="mic-btn" title="Voice command (uses browser speech recognition)">🎙</button>
+      <input id="cmd-input" placeholder="Type a command… e.g. 'volume up', 'open chrome', 'system status'" autocomplete="off" autofocus>
+      <button type="submit" class="btn">EXECUTE</button>
+    </form>
+  </div>
+
+  <div id="history-panel" class="panel">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <h3>// COMMAND LOG</h3>
+    <div id="history"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="wake-hint">TIP: MIC BUTTON USES BROWSER SPEECH RECOGNITION · CHROME/EDGE RECOMMENDED</div>
+
+<div id="boot-overlay">
+  <div class="big">J.A.R.V.I.S.</div>
+  <div id="boot-log"></div>
+  <div id="boot-bar"><div></div></div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
