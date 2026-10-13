@@ -134,6 +134,13 @@ $("#app-input").addEventListener("keydown", (e) => {
 });
 
 /* ---------- always-on offline ears (server vosk) ---------- */
+function renderEars(on) {
+  $("#ears-chip").textContent = on ? "👂 EARS OPEN" : "🔇 EARS CLOSED";
+  const b = $("#ears-btn");
+  b.classList.toggle("ears-on", on);
+  b.title = on ? "Always-on ears OPEN — say 'JARVIS <command>' anywhere. Click to close."
+               : "Ears closed. Click to open always-on listening.";
+}
 $("#ears-btn").addEventListener("click", async () => {
   const on = !$("#ears-chip").textContent.includes("OPEN");
   const r = await fetch("/api/ears", { method: "POST",
@@ -228,6 +235,9 @@ function connectWS() {
       addHistory(msg.text, msg.reply || "");
       if (msg.reply) speak(msg.reply);
     }
+    else if (msg.type === "ears") {
+      renderEars(msg.enabled);
+    }
     else if (msg.type === "proactive") {
       addHistory("(" + (msg.kind || "proactive") + ")", msg.text);
       const t = $("#toast");
@@ -295,11 +305,7 @@ async function refreshState() {
     const s = await r.json();
     applyPowerState(s.online);
     $("#cmd-count").textContent = s.commands_handled;
-    if (s.ears !== undefined) {
-      $("#ears-chip").textContent = s.ears ? "👂 EARS OPEN" : "🔇 EARS CLOSED";
-      $("#ears-btn").style.borderColor = s.ears ? "var(--gold)" : "rgba(255,179,71,.4)";
-      $("#ears-btn").style.boxShadow = s.ears ? "0 0 14px rgba(255,179,71,.35)" : "none";
-    }
+    if (s.ears !== undefined) renderEars(s.ears);
     if (s.mode) $("#mode-chip").textContent = "MODE: " + s.mode.toUpperCase();
     if (s.ambience !== undefined) $("#amb-chip").textContent = "♩ " + s.ambience.toUpperCase();
     const rc = $("#rem-chip");

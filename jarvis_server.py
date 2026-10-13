@@ -30,7 +30,7 @@ from pyautogui import press as send_key, hotkey, screenshot as take_screenshot
 import pyperclip
 
 from jarvis_brain import (ReminderStore, get_weather, fuzzy_match,
-                           AmbientEngine, VoskListener, ProactiveAgent)
+                           AmbientEngine, VoskListener, ProactiveAgent, MODEL_PATH)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -38,10 +38,43 @@ HOST = "127.0.0.1"
 PORT = 8420
 BASE_DIR = Path(__file__).resolve().parent
 
+SETTINGS_PATH = BASE_DIR / "settings.json"
+
+
+def load_settings() -> dict:
+    try:
+        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def save_settings(updates: dict):
+    s = load_settings()
+    s.update(updates)
+    try:
+        SETTINGS_PATH.write_text(json.dumps(s, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+
 app = FastAPI(title="JARVIS Local Control", docs_url=None, redoc_url=None)
 
 reminders = ReminderStore(BASE_DIR / "reminders.json")
 ambient = AmbientEngine()
+
+
+# Never let the browser serve a stale HUD (no-cache = revalidate each load)
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class NoCacheStatic(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if not request.url.path.startswith(("/api", "/ws")):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+app.add_middleware(NoCacheStatic)
 
 
 # ---------------------------------------------------------------------------
@@ -861,13 +894,15 @@ listener = VoskListener(on_command=handle_voice_command,
 
 @app.post("/api/ears")
 async def api_ears(body: dict):
-    """Toggle the always-on offline listener."""
+    """Toggle the always-on offline listener. Choice is persisted."""
     on = bool((body or {}).get("enabled"))
     if on:
         ok, reply = listener.start()
     else:
         listener.stop()
         ok, reply = True, "Ears closed."
+    save_settings({"ears": listener.enabled})
+    broadcast({"type": "ears", "enabled": listener.enabled})
     return {"ok": ok, "reply": reply, "enabled": listener.enabled}
 
 
@@ -878,6 +913,15 @@ async def api_reminders():
 
 @app.on_event("startup")
 async def startup():
+    # Ears: auto-open on boot unless the user explicitly turned them off.
+    # (Previously they silently reset to closed on every restart.)
+    if MODEL_PATH.exists():
+        if load_settings().get("ears", True):
+            ok, reply = listener.start()
+            print(f"[ears] {reply}")
+    else:
+        print("[ears] model missing — fetch_models.py or rerun setup needed")
+
     # proactive loop: reminders + vitals check + ambient chatter
     async def proactive_loop():
         while True:

@@ -4,3 +4,4 @@ __pycache__/
 models/
 *.log
 reminders.json
+settings.json

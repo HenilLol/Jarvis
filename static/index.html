@@ -210,6 +210,8 @@ body {
 .btn.mic { width: 52px; padding: 0; font-size: 18px; border-color: var(--cyan-dim); }
 .btn.mic.listening { border-color: var(--red); color: var(--red); animation: micPulse 1.2s ease-in-out infinite; background: rgba(255,77,94,.08); }
 @keyframes micPulse { 50% { box-shadow: 0 0 18px rgba(255,77,94,.35); } }
+.btn.ears-on { border-color: var(--gold) !important; color: var(--gold); animation: earsPulse 2.2s ease-in-out infinite; background: rgba(255,179,71,.08); }
+@keyframes earsPulse { 0%,100% { box-shadow: 0 0 8px rgba(255,179,71,.25); } 50% { box-shadow: 0 0 18px rgba(255,179,71,.5); } }
 
 /* ============ overlays ============ */
 #boot-overlay {
