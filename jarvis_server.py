@@ -241,6 +241,55 @@ def kill_app(name: str) -> tuple[bool, str]:
     return False, f"No running process matched '{name}'."
 
 
+# File search across drives
+SEARCH_ROOTS = ["C:\\Users\\Henil Patel", "D:\\", "E:\\"]
+SKIP_DIRS = {".venv", "node_modules", "__pycache__", "$RECYCLE.BIN", "System Volume Information",
+             "AppData", ".git", "models", "site-packages", "Windows", "Program Files",
+             "Program Files (x86)", "ProgramData"}
+
+
+def find_files(query: str, limit: int = 8) -> list:
+    """Fuzzy filename search across user dirs + data drives. Returns Paths."""
+    ql = query.lower()
+    hits = []
+    for root in SEARCH_ROOTS:
+        rootp = Path(root)
+        if not rootp.exists():
+            continue
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+            for f in filenames:
+                fl = f.lower()
+                if ql in fl:
+                    hits.append(Path(dirpath) / f)
+                    if len(hits) >= limit * 3:
+                        return _rank_hits(hits, ql, limit)
+        if len(hits) >= limit * 3:
+            break
+    return _rank_hits(hits, ql, limit)
+
+
+def _rank_hits(hits: list, ql: str, limit: int) -> list:
+    def score(p):
+        s = 0
+        pl = p.name.lower()
+        s_ = str(p)
+        if pl == ql: s += 200
+        if pl.startswith(ql): s += 80
+        s -= s_.count("\\") * 8            # shallower paths win
+        if "pkg\\mod" in s_ or "node_modules" in s_: s -= 150  # dep caches
+        if "AppData" in s_: s -= 40
+        if p.suffix in (".exe", ".lnk", ".dll"): s -= 30       # binaries last
+        if p.suffix in (".md", ".txt", ".docx", ".pdf", ".py", ".jpg", ".png", ".mp4"): s += 15
+        return -s
+    return sorted(hits, key=score)[:limit]
+
+
+def open_folder(path: Path):
+    subprocess.Popen(["explorer", "/select,", str(path)],
+                     creationflags=subprocess.CREATE_NO_WINDOW)
+
+
 def screenshot_to_file() -> Path:
     shots = BASE_DIR / "screenshots"
     shots.mkdir(exist_ok=True)
@@ -390,6 +439,24 @@ def route_command(raw: str) -> dict:
     if not online:
         return {"ok": False, "reply": "I am powered down, sir. Say 'wake up' first.", "offline": True}
 
+    # --- MK VIII: morning briefing (before plain greetings steal it) ----------
+    if "morning briefing" in text or "brief me" in text or "briefing" in text or text == "good morning":
+        parts = []
+        parts.append(f"Good {dt.datetime.now().strftime('%A')}, sir.")
+        w = get_weather()
+        if w:
+            parts.append(f"Outside: {w['desc'].strip()}, {w['temp_c']} degrees in {w['location']}.")
+        bat = psutil.sensors_battery()
+        if bat:
+            parts.append(f"Battery at {bat.percent:.0f} percent" + (", charging." if bat.power_plugged else "."))
+        mem = psutil.virtual_memory()
+        parts.append(f"Memory at {mem.percent:.0f} percent, {len(reminders.pending())} reminders pending.")
+        c = psutil.disk_usage("C:\\")
+        parts.append(f"C drive has {c.free/1e9:.0f} gigabytes free.")
+        if agent.mode != "normal":
+            parts.append(f"Note: {agent.mode} mode is still active.")
+        return {"ok": True, "reply": " ".join(parts) + " It's going to be a good day, sir."}
+
     # --- greetings / identity ---------------------------------------------
     if text in ("hello", "hi", "hey", "hello jarvis", "hi jarvis", "good morning", "good evening", "good afternoon"):
         hour = dt.datetime.now().hour
@@ -454,6 +521,80 @@ def route_command(raw: str) -> dict:
         cur = get_brightness()
         return {"ok": True, "reply": (f"Brightness is at {cur} percent." if cur >= 0
                                       else "Brightness control is not available on this display."), "data": {"brightness": cur}}
+
+    # --- MK VIII: file finder ------------------------------------------------
+    m = re.match(r"(?:jarvis )?find (?:my |the )?(?:file |document )?(?:named |called )?[\"']?([\w\-. +()]+)[\"']?$", text)
+    if text.startswith("find ") or text.startswith("search my files for") or text.startswith("locate "):
+        q = text
+        for pre in ("search my files for", "find file named", "find the file", "find my file",
+                    "find file", "find document", "locate file", "locate", "find"):
+            if q.startswith(pre):
+                q = q[len(pre):].strip()
+                break
+        q = q.strip("\"' ")
+        if not q:
+            return {"ok": False, "reply": "What file am I looking for, sir?"}
+        hits = find_files(q, limit=8)
+        if not hits:
+            return {"ok": False, "reply": f"No file matching '{q}' found on your drives, sir."}
+        best = hits[0]
+        n = len(hits)
+        others = f" {n-1} more match{'es' if n>2 else ''}" if n > 1 else ""
+        open_folder(best)
+        return {"ok": True,
+                "reply": f"Found it. {best.name}{others}. Opening the folder, sir.",
+                "data": {"matches": [str(p) for p in hits]}}
+
+    # --- MK VIII: RAM cleaner -----------------------------------------------
+    if "clean my ram" in text or "clean up ram" in text or "free up memory" in text or "clear memory" in text:
+        # Only browsers and truly safe-to-restart apps. NEVER messengers/game
+        # clients/IDEs — losing unsaved work or getting logged out is worse
+        # than RAM pressure. 'clean my ram aggressively' unlocks the rest.
+        aggressive = "aggressive" in text or "everything" in text
+        SAFE_HOGS = {"chrome": 500, "msedge": 500}
+        AGGRESSIVE_HOGS = {"code": 300, "spotify": 250, "notepad": 999}
+        hogs = dict(SAFE_HOGS)
+        if aggressive:
+            hogs.update(AGGRESSIVE_HOGS)
+        killed = []
+        for p in psutil.process_iter(["name", "memory_info"]):
+            try:
+                n = (p.info["name"] or "").lower().replace(".exe", "")
+                if n in hogs:
+                    rss = (p.info["memory_info"] or psutil.NoSuchProcess)
+                    if hasattr(rss, "rss") and rss.rss > hogs[n] * 1e6:
+                        p.terminate()
+                        killed.append(n)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        if killed:
+            time.sleep(1.5)
+        after = psutil.virtual_memory()
+        if killed:
+            return {"ok": True, "reply": f"Memory sweep complete. Terminated {', '.join(sorted(set(killed)))} — available memory now {after.available/1e9:.1f} gigabytes. Say 'clean my ram aggressively' to include IDEs and players, sir."}
+        return {"ok": True, "reply": f"No offending processes found. Available memory at {after.available/1e9:.1f} gigabytes, sir. Everything is tidy."}
+
+    # --- MK VIII: internet speedtest -----------------------------------------
+    if "speed test" in text or "speedtest" in text or "how fast is my internet" in text or "internet speed" in text:
+        try:
+            import urllib.request
+            t0 = time.time()
+            req = urllib.request.Request("https://speed.cloudflare.com/__down?bytes=5000000",
+                                         headers={"User-Agent": "jarvis/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                while r.read(65536):
+                    pass
+            elapsed = time.time() - t0
+            mbps = (5_000_000 * 8 / elapsed) / 1e6
+            verdict = "Excellent." if mbps > 100 else " Adequate." if mbps > 25 else " Barely usable, sir."
+            return {"ok": True, "reply": f"Download speed: {mbps:.0f} megabits per second, sir.{verdict}",
+                    "data": {"mbps": round(mbps, 1)}}
+        except Exception as e:
+            return {"ok": False, "reply": f"Speed test failed: {e}"}
+
+    # --- MK VIII: AI chat brain (local Ollama) ---------------------------------
+    if text.startswith("chat ") or "hey jarvis what" in text or (state.get("ai_chat_mode") and text not in ("stop chat", "chat off", "exit chat")):
+        pass  # handled by the dedicated /api/chat endpoint + AI-chat router below
 
     # --- MK VII: weather ----------------------------------------------------
     if "weather" in text or "temperature outside" in text or "how hot" in text or "raining" in text:
@@ -721,13 +862,19 @@ def route_command(raw: str) -> dict:
     if "roll a dice" in text or "roll dice" in text or text == "roll a die":
         return {"ok": True, "reply": f"You rolled a {random.randint(1, 6)}."}
 
-    # --- fallback: fuzzy rescue, then give up politely -------------------------------------
+    # --- fallback: fuzzy rescue → AI brain → polite give-up -------------------------------
     m = fuzzy_match(raw)
     if m and m != text:
         result = route_command(m)
         result = dict(result)
         result["via_fuzzy"] = m
         return result
+    # unmatched: the AI brain answers as a conversational prompt
+    if ollama_alive():
+        result = ai_chat(raw, history=None)
+        if result.get("ok"):
+            result["via_brain"] = True
+            return result
     return {"ok": False,
             "reply": "I'm afraid that command isn't in my repertoire, sir. Try: volume, brightness, open, close, screenshot, status, weather, reminders, modes — or 'help'."}
 
@@ -863,6 +1010,73 @@ async def ws_endpoint(ws: WebSocket):
     finally:
         t1.cancel(); t2.cancel()
         clients.discard(ws)
+
+
+# ---------------------------------------------------------------------------
+# MK VIII: local AI chat brain (Ollama) — the conversational layer
+OLLAMA_URL = "http://localhost:11434"
+AI_MODEL = "qwen2.5:3b"          # small, fast, runs comfortably on RTX 5050
+JARVIS_SYSTEM = (
+    "You are JARVIS, Tony Stark's AI assistant, now serving a user named Henil "
+    "(call him 'sir'). Be witty, loyal, concise (1-3 sentences unless asked for "
+    "detail), and speak like the movie JARVIS: composed British butler-esque "
+    "tone with dry humor. You control his Windows laptop: you can change volume, "
+    "brightness, open apps, take screenshots, check system stats, tell the "
+    "weather in Chhindwara India, and more. If asked to do something, answer "
+    "briefly and confirm action. Never mention being a language model."
+)
+_chat_lock = threading.Lock()
+
+
+def ollama_alive() -> bool:
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=2) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def ai_chat(prompt: str, history: list | None = None) -> dict:
+    """Talk to the local LLM. Falls back gracefully if Ollama is down."""
+    if not ollama_alive():
+        return {"ok": False, "reply": "My higher brain functions are offline, sir. "
+                "Start Ollama to enable conversation.", "brain_offline": True}
+    try:
+        import urllib.request
+        payload = {
+            "model": AI_MODEL,
+            "messages": [{"role": "system", "content": JARVIS_SYSTEM}],
+            "stream": False,
+            "options": {"temperature": 0.6, "num_ctx": 2048},
+        }
+        if history:
+            payload["messages"] += history[-6:]
+        payload["messages"].append({"role": "user", "content": prompt})
+        req = urllib.request.Request(f"{OLLAMA_URL}/api/chat",
+                                     data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            data = json.loads(r.read().decode())
+        return {"ok": True, "reply": data.get("message", {}).get("content", "").strip()}
+    except Exception as e:
+        return {"ok": False, "reply": f"Neural link error: {e}"}
+
+
+@app.post("/api/chat")
+async def api_chat(body: dict):
+    prompt = (body or {}).get("text", "").strip()
+    if not prompt:
+        return JSONResponse({"ok": False, "reply": "Say something, sir."}, status_code=400)
+    result = await asyncio.to_thread(ai_chat, prompt, (body or {}).get("history"))
+    log_history("(chat) " + prompt, result.get("reply", ""))
+    broadcast({"type": "command", "text": "(chat) " + prompt, **result})
+    return result
+
+
+@app.get("/api/brain")
+async def api_brain():
+    return {"alive": ollama_alive(), "model": AI_MODEL if ollama_alive() else None}
 
 
 # ---------------------------------------------------------------------------

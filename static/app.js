@@ -299,6 +299,16 @@ function renderTelemetry(t) {
 }
 
 /* ---------- state refresh ---------- */
+async function refreshBrain() {
+  try {
+    const r = await fetch("/api/brain");
+    const b = await r.json();
+    const c = $("#brain-chip");
+    c.textContent = b.alive ? "🧠 ONLINE" : "🧠 OFFLINE";
+    c.style.color = b.alive ? "var(--green)" : "rgba(191,234,255,.4)";
+  } catch (e) {}
+}
+
 async function refreshState() {
   try {
     const r = await fetch("/api/state");
@@ -388,4 +398,6 @@ async function boot() {
 connectWS();
 setupRecognition();
 refreshState();
+refreshBrain();
+setInterval(refreshBrain, 15000);
 boot();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>J.A.R.V.I.S. — Home Interface</title>
+<title>J.A.R.V.I.S. MK VIII — Home Interface</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -259,12 +259,13 @@ body {
 <div id="app">
   <div id="header" class="panel">
     <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
-    <div class="title">J.A.R.V.I.S.<small>HOME INTERFACE // MK VI</small></div>
+    <div class="title">J.A.R.V.I.S.<small>HOME INTERFACE // MK VIII</small></div>
     <div class="status-line"><span class="dot on" id="status-dot"></span><span id="status-text">SYSTEM ONLINE</span></div>
     <div class="status-line" style="gap:14px;display:flex">
       <span id="mode-chip" title="Active mode" style="color:var(--gold)">MODE: NORMAL</span>
       <span id="ears-chip" title="Always-on offline voice">🔇 EARS CLOSED</span>
       <span id="amb-chip" title="Ambience">♩ SILENCE</span>
+      <span id="brain-chip" title="Local AI brain (Ollama)">🧠 OFFLINE</span>
       <span id="rem-chip" title="Pending reminders" style="display:none;color:var(--gold)">⏰ 0</span>
     </div>
     <div class="clock" id="clock">--:--:--</div>
@@ -342,6 +343,10 @@ body {
       <button class="chip" data-cmd="start storm">⛈ STORM</button>
       <button class="chip" data-cmd="start deep">🌌 DEEP SPACE</button>
       <button class="chip" data-cmd="stop ambience">STOP AMBIENCE</button>
+      <button class="chip" data-cmd="good morning">MORNING BRIEFING</button>
+      <button class="chip" data-cmd="clean my ram">CLEAN RAM</button>
+      <button class="chip" data-cmd="speed test">SPEED TEST</button>
+      <button class="chip" data-cmd="find file README">FIND FILE</button>
       <button class="chip danger" data-cmd="shutdown my computer">SHUTDOWN ⚠</button>
     </div>
     <h3 style="margin-top:14px">// APP LAUNCH</h3>

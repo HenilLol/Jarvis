@@ -5,3 +5,5 @@ models/
 *.log
 reminders.json
 settings.json
+ollama.zip
+ollama/
